@@ -24,6 +24,7 @@ county_comparison_file = DATA_DIR / "county_2021_vs_latest_comparison.csv"
 st.title("Illinois Hazard Mitigation Plan Update Assistant")
 st.caption("GIS + Census Update + Plan Review + Analytics Assistant")
 agency_goal_file = DATA_DIR / "agency_goal_summary.csv"
+agency_action_file = DATA_DIR / "agency_action_tracker.csv"
 
 tabs = st.tabs([
     "Executive Dashboard",
@@ -32,7 +33,7 @@ tabs = st.tabs([
     "County 2021 vs Latest",
     "GIS Map",
     "Regression Lab",
-    "Agency Goals",
+    "Agency Goals & Actions",
     "Plan Review",
 ])
 with tabs[0]:
@@ -442,9 +443,9 @@ with tabs[5]:
     else:
         st.warning("Run scripts\\04_make_visuals.py first.")
 with tabs[6]:
-    st.header("Agency Responsibilities by Mitigation Goal")
+    st.header("Agency Goals & Actions")
     st.caption(
-        "Goals are shown using simplified descriptive labels. These labels correspond to the official 2023 State Mitigation Goals in the plan."
+        "This tab summarizes which agencies are linked to each mitigation goal and shows a first-pass action tracker from the 2023 plan."
     )
 
     if agency_goal_file.exists():
@@ -515,17 +516,126 @@ with tabs[6]:
             yaxis_title="Number of agencies",
             title_x=0.02
         )
-
         st.plotly_chart(fig, use_container_width=True)
-
-        st.info(
-            "This is a first-pass agency-to-goal summary based on the 2023 plan action tables. "
-            "It helps reviewers quickly filter which agencies are linked to each mitigation goal. "
-            "The next version can expand this into action-number-level tracking with status, effort, and results."
-        )
 
     else:
         st.warning("Agency-goal summary file not found.")
+
+    st.divider()
+    st.subheader("Agency Action Tracker from 2023 Plan")
+
+    if agency_action_file.exists():
+        action_df = pd.read_csv(agency_action_file)
+
+        action_agencies = sorted(
+            set(action_df["lead_agency"].dropna().tolist())
+        )
+
+        selected_action_agency = st.selectbox(
+            "Filter action table by lead agency",
+            ["All"] + action_agencies
+        )
+
+        selected_action_goal = st.selectbox(
+            "Filter action table by descriptive goal",
+            ["All"] + sorted(action_df["descriptive_goal"].dropna().unique().tolist())
+        )
+
+        selected_action_type = st.selectbox(
+            "Filter by action type",
+            ["All", "New", "Ongoing"]
+        )
+
+        selected_term = st.selectbox(
+            "Filter by term",
+            ["All"] + sorted(action_df["term"].dropna().unique().tolist())
+        )
+
+        action_show = action_df.copy()
+
+        if selected_action_agency != "All":
+            action_show = action_show[action_show["lead_agency"] == selected_action_agency]
+
+        if selected_action_goal != "All":
+            action_show = action_show[action_show["descriptive_goal"] == selected_action_goal]
+
+        if selected_action_type != "All":
+            action_show = action_show[action_show["action_type"] == selected_action_type]
+
+        if selected_term != "All":
+            action_show = action_show[action_show["term"] == selected_term]
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Actions shown", len(action_show))
+        c2.metric("Lead agencies", action_show["lead_agency"].nunique())
+        c3.metric("New actions", int((action_show["action_type"] == "New").sum()))
+        c4.metric("Ongoing actions", int((action_show["action_type"] == "Ongoing").sum()))
+
+        st.dataframe(
+            action_show[
+                [
+                    "action_number",
+                    "descriptive_goal",
+                    "goal_objective",
+                    "hazard",
+                    "lead_agency",
+                    "supporting_agencies",
+                    "status",
+                    "term",
+                    "action",
+                ]
+            ],
+            use_container_width=True
+        )
+
+        action_goal_counts = (
+            action_df.groupby("descriptive_goal")
+            .size()
+            .reset_index(name="action_count")
+        )
+
+        fig_action_goal = px.bar(
+            action_goal_counts,
+            x="descriptive_goal",
+            y="action_count",
+            text_auto=True,
+            title="Number of Tracked Actions by Descriptive Goal"
+        )
+        fig_action_goal.update_layout(
+            xaxis_title="Descriptive Goal",
+            yaxis_title="Number of actions",
+            title_x=0.02
+        )
+        st.plotly_chart(fig_action_goal, use_container_width=True)
+
+        agency_counts = (
+            action_df.groupby("lead_agency")
+            .size()
+            .reset_index(name="action_count")
+            .sort_values("action_count", ascending=False)
+        )
+
+        fig_agency_actions = px.bar(
+            agency_counts,
+            x="lead_agency",
+            y="action_count",
+            text_auto=True,
+            title="Tracked Actions by Lead Agency"
+        )
+        fig_agency_actions.update_layout(
+            xaxis_title="Lead Agency",
+            yaxis_title="Number of actions",
+            title_x=0.02
+        )
+        st.plotly_chart(fig_agency_actions, use_container_width=True)
+
+        st.info(
+            "This is a first-pass action tracker based on the Action Plan table in the 2023 plan. "
+            "It currently includes a verified sample of actions and can be expanded to include all actions from pages 260–304."
+        )
+
+    else:
+        st.warning("Agency action tracker file not found.")
 with tabs[7]:
     st.header("Plan Review")
 
