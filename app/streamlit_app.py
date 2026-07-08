@@ -294,7 +294,6 @@ with tabs[4]:
             color="region",
             size="total_population",
             hover_name="county_name",
-            trendline="ols",
             title="Poverty Rate and Older Adult Share Across Illinois Counties"
         )
         fig.update_layout(
