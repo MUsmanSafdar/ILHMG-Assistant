@@ -23,6 +23,7 @@ comparison_file = DATA_DIR / "regional_2021_vs_latest_comparison.csv"
 county_comparison_file = DATA_DIR / "county_2021_vs_latest_comparison.csv"
 st.title("Illinois Hazard Mitigation Plan Update Assistant")
 st.caption("GIS + Census Update + Plan Review + Analytics Assistant")
+agency_goal_file = DATA_DIR / "agency_goal_summary.csv"
 
 tabs = st.tabs([
     "Executive Dashboard",
@@ -31,9 +32,9 @@ tabs = st.tabs([
     "County 2021 vs Latest",
     "GIS Map",
     "Regression Lab",
+    "Agency Goals",
     "Plan Review",
 ])
-
 with tabs[0]:
     st.header("Executive Dashboard")
 
@@ -440,8 +441,92 @@ with tabs[5]:
         st.caption("This is exploratory decision-support analysis, not causal proof.")
     else:
         st.warning("Run scripts\\04_make_visuals.py first.")
-
 with tabs[6]:
+    st.header("Agency Responsibilities by Mitigation Goal")
+    st.caption(
+        "Goals are shown using simplified descriptive labels. These labels correspond to the official 2023 State Mitigation Goals in the plan."
+    )
+
+    if agency_goal_file.exists():
+        agency_df = pd.read_csv(agency_goal_file)
+
+        selected_agency = st.selectbox(
+            "Filter by agency",
+            ["All"] + sorted(agency_df["agency"].dropna().unique().tolist())
+        )
+
+        goal_label_map = {
+            "Life Safety & Preparedness": "Goal 1",
+            "Risk Reduction & Resilient Infrastructure": "Goal 2",
+            "Coordination, Capacity & Data Systems": "Goal 3",
+            "Public Education & Outreach": "Goal 4",
+        }
+
+        selected_goal_label = st.selectbox(
+            "Filter by descriptive goal",
+            ["All"] + list(goal_label_map.keys())
+        )
+
+        selected_goal = "All" if selected_goal_label == "All" else goal_label_map[selected_goal_label]
+
+        show = agency_df.copy()
+
+        if selected_agency != "All":
+            show = show[show["agency"] == selected_agency]
+
+        if selected_goal != "All":
+            show = show[show["linked_goals"].str.contains(selected_goal, na=False)]
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Agencies shown", show["agency"].nunique())
+        col2.metric("Rows shown", len(show))
+        col3.metric(
+            "Goal filter",
+            selected_goal_label if selected_goal_label != "All" else "All goals"
+        )
+
+        st.subheader("Agency-wise responsibility summary")
+
+        display_cols = [
+            "agency",
+            "linked_goal_labels",
+            "lead_or_support",
+            "summary",
+            "responsibility_keywords"
+        ]
+
+        st.dataframe(show[display_cols], use_container_width=True)
+
+        exploded = agency_df.assign(
+            goal_label=agency_df["linked_goal_labels"].str.split("; ")
+        ).explode("goal_label")
+
+        goal_counts = exploded.groupby("goal_label").size().reset_index(name="agency_count")
+
+        fig = px.bar(
+            goal_counts,
+            x="goal_label",
+            y="agency_count",
+            text_auto=True,
+            title="Number of Agencies Linked to Each Descriptive Goal"
+        )
+        fig.update_layout(
+            xaxis_title="Descriptive Goal",
+            yaxis_title="Number of agencies",
+            title_x=0.02
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.info(
+            "This is a first-pass agency-to-goal summary based on the 2023 plan action tables. "
+            "It helps reviewers quickly filter which agencies are linked to each mitigation goal. "
+            "The next version can expand this into action-number-level tracking with status, effort, and results."
+        )
+
+    else:
+        st.warning("Agency-goal summary file not found.")
+with tabs[7]:
     st.header("Plan Review")
 
     review_rows = [
