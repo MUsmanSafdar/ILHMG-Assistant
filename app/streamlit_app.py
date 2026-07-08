@@ -20,14 +20,15 @@ region_file = DATA_DIR / "regional_demographics_acs2024.csv"
 county_file = DATA_DIR / "county_demographics_acs2024.csv"
 geojson_file = DATA_DIR / "illinois_counties_priority.geojson"
 comparison_file = DATA_DIR / "regional_2021_vs_latest_comparison.csv"
-
+county_comparison_file = DATA_DIR / "county_2021_vs_latest_comparison.csv"
 st.title("Illinois Hazard Mitigation Plan Update Assistant")
 st.caption("GIS + Census Update + Plan Review + Analytics Assistant")
 
 tabs = st.tabs([
     "Executive Dashboard",
     "Census Update",
-    "2021 vs Latest",
+    "Regional 2021 vs Latest",
+    "County 2021 vs Latest",
     "GIS Map",
     "Regression Lab",
     "Plan Review",
@@ -191,8 +192,83 @@ with tabs[2]:
 
     else:
         st.warning("Comparison file not found. Run scripts\\06_compare_plan_2021_vs_latest.py first.")
-
 with tabs[3]:
+    st.header("County 2021 Baseline vs Latest ACS")
+
+    if county_comparison_file.exists():
+        county_compare = pd.read_csv(county_comparison_file)
+
+        st.success("County comparison file loaded.")
+
+        selected_region = st.selectbox(
+            "Filter county comparison by region",
+            ["All"] + sorted(county_compare["region"].dropna().unique().tolist())
+        )
+
+        show = county_compare.copy()
+        if selected_region != "All":
+            show = show[show["region"] == selected_region]
+
+        metric_choice = st.selectbox(
+            "Select county comparison metric",
+            [
+                "population_change",
+                "population_pct_change",
+                "income_change",
+                "income_pct_change",
+                "poverty_rate_pp_change",
+                "age_65_plus_rate_pp_change",
+                "vacancy_rate_pp_change",
+                "bachelors_or_higher_rate_pp_change"
+            ]
+        )
+
+        top_n = st.slider("Number of counties to display", 10, 102, 25)
+
+        ranked = show.sort_values(metric_choice, ascending=False).head(top_n)
+
+        st.subheader("County comparison table")
+        st.dataframe(show.round(2), use_container_width=True)
+
+        fig = px.bar(
+            ranked.sort_values(metric_choice, ascending=True),
+            x=metric_choice,
+            y="county_name",
+            color="region",
+            orientation="h",
+            title=f"Top Counties by {metric_choice.replace('_', ' ').title()}",
+            hover_data=[
+                "total_population_2021",
+                "total_population_latest",
+                "median_household_income_2021",
+                "median_household_income_latest",
+                "poverty_rate_2021",
+                "poverty_rate_latest",
+                "age_65_plus_rate_2021",
+                "age_65_plus_rate_latest",
+                "vacancy_rate_2021",
+                "vacancy_rate_latest",
+                "bachelors_or_higher_rate_2021",
+                "bachelors_or_higher_rate_latest"
+            ]
+        )
+
+        fig.update_layout(
+            xaxis_title=metric_choice.replace("_", " ").title(),
+            yaxis_title="County",
+            title_x=0.02
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.info(
+            "This tab compares county-level ACS 2021 values with the latest ACS values used in the assistant. "
+            "Population and income changes are absolute or percentage changes. Poverty, age 65+, vacancy, and education changes are percentage-point changes."
+        )
+
+    else:
+        st.warning("County comparison file not found. Run scripts\\07_county_compare_2021_vs_latest.py first.")
+with tabs[4]:
     st.header("GIS Map")
 
     if geojson_file.exists() and priority_file.exists():
@@ -279,7 +355,7 @@ with tabs[3]:
         st.code(str(geojson_file))
         st.code(str(priority_file))
 
-with tabs[4]:
+with tabs[5]:
     st.header("Regression Lab")
 
     if priority_file.exists():
@@ -307,7 +383,7 @@ with tabs[4]:
     else:
         st.warning("Run scripts\\04_make_visuals.py first.")
 
-with tabs[5]:
+with tabs[6]:
     st.header("Plan Review")
 
     review_rows = [
@@ -339,38 +415,3 @@ with tabs[5]:
     ]
 
     st.dataframe(pd.DataFrame(review_rows), use_container_width=True)
-
-with tabs[6]:
-    st.header("Email Draft")
-
-    email = """Subject: Proposed GIS and Data Assistant for Illinois Hazard Mitigation Plan Review
-
-Dear Russell and Camden,
-
-I hope you are both doing well.
-
-I wanted to share a proposed workflow I am developing to support review and update work for the Illinois Natural Hazard Mitigation Plan. My idea is to build a small GIS-enabled data assistant that can help with Chapter 1 Census table updates, hazard mitigation goal/action review, critical facilities analysis, and presentation-ready visualizations.
-
-The first phase would focus on updating the Chapter 1 demographic and regional tables that are currently based on 2021 ACS 5-year estimates. The assistant would pull the latest available Census/ACS data, aggregate county-level data into the four mitigation planning regions used in the plan, recreate the regional tables, and generate updated charts and maps.
-
-The second phase would add GIS and analytical features, including county-level hazard and vulnerability mapping, critical facilities overlays, regional comparison visuals, and basic statistical analysis to identify counties where hazard exposure, social vulnerability, and facility concentration overlap. The goal would not be to replace subject-matter review, but to make the review process faster, more transparent, and easier to present.
-
-I would appreciate your guidance on the official county-to-region list used in the plan, and whether there are preferred internal datasets for critical facilities, shelters, state facilities, or mitigation actions that should be used instead of public datasets.
-
-Best regards,
-
-Muhammad Usman
-"""
-    st.text_area("Email", email, height=450)
-pdf_path = BASE_DIR / "outputs" / "reports" / "IL_Hazard_Plan_Update_Senior_Brief.pdf"
-
-if pdf_path.exists():
-    with open(pdf_path, "rb") as pdf_file:
-        st.download_button(
-            label="Download Senior Brief PDF",
-            data=pdf_file,
-            file_name="IL_Hazard_Plan_Update_Senior_Brief.pdf",
-            mime="application/pdf"
-        )
-else:
-    st.warning("PDF brief not found. Run scripts\\07_generate_senior_brief_pdf.py first.")
